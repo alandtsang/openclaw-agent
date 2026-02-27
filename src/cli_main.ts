@@ -66,7 +66,11 @@ async function main() {
                 process.stdout.write('🤖 Agent: ');
 
                 for await (const event of turn) {
-                    if (event.content?.parts) {
+                    if (event.errorMessage) {
+                        const errMsg = `[API Error ${event.errorCode || ''}]: ${event.errorMessage}`;
+                        process.stdout.write(errMsg);
+                        responseText += errMsg;
+                    } else if (event.content?.parts) {
                         for (const part of event.content.parts) {
                             if (part.text && event.content.role === 'model') {
                                 process.stdout.write(part.text);

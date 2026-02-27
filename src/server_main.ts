@@ -76,7 +76,9 @@ app.post('/chat', async (req, res) => {
         });
 
         for await (const event of turn) {
-            if (event.content?.parts) {
+            if (event.errorMessage) {
+                responseText += `[API Error ${event.errorCode || ''}]: ${event.errorMessage}`;
+            } else if (event.content?.parts) {
                 for (const part of event.content.parts) {
                     if (part.text && event.content.role === 'model') {
                         responseText += part.text;
