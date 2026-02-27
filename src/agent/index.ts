@@ -12,37 +12,28 @@ import {
     AGENT_DESCRIPTION,
     getAgentInstruction,
 } from './instructions.js';
-import {
-    getCurrentTime,
-    executeCommand,
-    sendFeishuNotification,
-    webSearch,
-    updateMemory,
-} from '../tools/index.js';
+import { getSkillTools, loadSkillsPrompt } from './skillsManager.js';
 
 /**
  * Resolve the LLM model identifier.
- * Supports:
- *   - Gemini models (native): "gemini-2.5-flash"
- *   - Third-party via LiteLLM: "litellm/deepseek/deepseek-chat"
  */
 function getModelId(): string {
     return process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat';
 }
 
 /**
- * The root agent — an OpenClaw-like autonomous assistant.
+ * Async factory to initialize the OpenClaw-like autonomous assistant.
+ * It dynamically discovers skills mappings and tools.
  */
-export const rootAgent = new LlmAgent({
-    name: AGENT_NAME,
-    model: getModelId(),
-    description: AGENT_DESCRIPTION,
-    instruction: getAgentInstruction(),
-    tools: [
-        getCurrentTime,
-        executeCommand,
-        sendFeishuNotification,
-        webSearch,
-        updateMemory,
-    ],
-});
+export async function initAgent(): Promise<LlmAgent> {
+    const dynamicTools = await getSkillTools();
+    const skillsPrompt = await loadSkillsPrompt();
+
+    return new LlmAgent({
+        name: AGENT_NAME,
+        model: getModelId(),
+        description: AGENT_DESCRIPTION,
+        instruction: getAgentInstruction(skillsPrompt),
+        tools: dynamicTools,
+    });
+}

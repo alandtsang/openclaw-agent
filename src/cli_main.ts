@@ -9,7 +9,7 @@ import 'dotenv/config';
 import * as readline from 'node:readline';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
-import { rootAgent } from './agent/index.js';
+import { initAgent } from './agent/index.js';
 
 async function main() {
     console.log('╔═══════════════════════════════════════════════╗');
@@ -22,6 +22,7 @@ async function main() {
     console.log();
 
     // Create runner and session
+    const rootAgent = await initAgent();
     const runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
     const userId = 'cli-user';
     const session = await runner.sessionService.createSession({

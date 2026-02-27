@@ -11,13 +11,14 @@ import 'dotenv/config';
 import express from 'express';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
-import { rootAgent } from './agent/index.js';
+import { initAgent } from './agent/index.js';
 
 const app = express();
 app.use(express.json());
 
-// Create a runner for the agent
-const runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
+// We will instantiate this when the server starts.
+let runner: InMemoryRunner;
+let agentName = '';
 
 /**
  * Health check endpoint
@@ -25,7 +26,7 @@ const runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
 app.get('/health', (_req, res) => {
     res.json({
         status: 'ok',
-        agent: rootAgent.name,
+        agent: agentName,
         timestamp: new Date().toISOString(),
     });
 });
@@ -96,15 +97,23 @@ app.post('/chat', async (req, res) => {
 });
 
 // Start the server
-const PORT = parseInt(process.env.PORT || '3000', 10);
-app.listen(PORT, () => {
-    console.log('╔═══════════════════════════════════════════════╗');
-    console.log('║       🐾 OpenClaw Agent Server Started       ║');
-    console.log('╠═══════════════════════════════════════════════╣');
-    console.log(`║  URL:   http://localhost:${PORT}               ║`);
-    console.log(`║  Model: ${(process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat').padEnd(37)}║`);
-    console.log('║  Endpoints:                                   ║');
-    console.log('║    POST /chat    — Chat with the agent        ║');
-    console.log('║    GET  /health  — Health check               ║');
-    console.log('╚═══════════════════════════════════════════════╝');
-});
+async function startServer() {
+    const rootAgent = await initAgent();
+    agentName = rootAgent.name;
+    runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
+
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    app.listen(PORT, () => {
+        console.log('╔═══════════════════════════════════════════════╗');
+        console.log('║       🐾 OpenClaw Agent Server Started       ║');
+        console.log('╠═══════════════════════════════════════════════╣');
+        console.log(`║  URL:   http://localhost:${PORT}               ║`);
+        console.log(`║  Model: ${(process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat').padEnd(37)}║`);
+        console.log('║  Endpoints:                                   ║');
+        console.log('║    POST /chat    — Chat with the agent        ║');
+        console.log('║    GET  /health  — Health check               ║');
+        console.log('╚═══════════════════════════════════════════════╝');
+    });
+}
+
+startServer().catch(console.error);

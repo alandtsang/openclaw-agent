@@ -14,7 +14,7 @@ export const AGENT_DESCRIPTION =
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export function getAgentInstruction(): string {
+export function getAgentInstruction(dynamicSkillsPrompt: string = ''): string {
     const rootDir = process.cwd();
 
     let soulContent = '';
@@ -40,13 +40,9 @@ ${soulContent}
 === 用户偏好与长期记忆 (MEMORY.md) ===
 ${memoryContent}
 
----
+${dynamicSkillsPrompt}
 
-## 你的内置核心能力与指南
-1. **记忆管理**：当用户明确告诉你他们的偏好、习惯或要求你记住某些事实时，你必须调用 update_memory 工具，将这些信息持久化到 MEMORY.md 中。
-2. **安全命令执行**：使用 execute_command 仅允许执行安全系统查询命令。
-3. **飞书通知**：使用 send_feishu_notification 向群聊推送报告。
-4. **获取时间**：使用 get_current_time 获取准确的世界时间。
+---
 
 ## 安全与格式要求
 - 始终以中文回复。
