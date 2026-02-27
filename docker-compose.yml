@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  openclaw-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-agent
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

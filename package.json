@@ -1,0 +1,31 @@
+{
+    "name": "openclaw-agent",
+    "version": "1.0.0",
+    "description": "An OpenClaw-like autonomous AI Agent built with Google ADK for TypeScript",
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch --require node-fetch-native/polyfill src/server_main.ts",
+        "dev:cli": "tsx --require node-fetch-native/polyfill src/cli_main.ts",
+        "build": "tsc",
+        "start": "node --require node-fetch-native/polyfill dist/server_main.js",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@google/adk": "^0.4.0",
+        "@google/genai": "^1.43.0",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "node-fetch-native": "^1.6.7",
+        "web-streams-polyfill": "^4.2.0",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.12.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.0"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    }
+}
