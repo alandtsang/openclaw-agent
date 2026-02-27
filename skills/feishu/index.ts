@@ -7,7 +7,7 @@
 
 import { FunctionTool } from '@google/adk';
 import { z } from 'zod/v4';
-import { createFeishuService } from '../services/feishu.js';
+import { createFeishuService } from './feishuService.js';
 
 // Lazily initialize the Feishu service
 let feishuService: ReturnType<typeof createFeishuService> | undefined;
@@ -24,7 +24,7 @@ export const sendFeishuNotification = new FunctionTool({
     description:
         'Sends a notification message to a Feishu (Lark) group chat via webhook. ' +
         'Supports plain text and rich text messages. Use this tool when the user asks to ' +
-        'send a notification or alert to Feishu.',
+        'send a notification, alert to Feishu, or send the result to Feishu.',
     parameters: z.object({
         message: z.string().describe('The message content to send'),
         title: z
