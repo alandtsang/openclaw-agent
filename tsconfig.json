@@ -8,14 +8,15 @@
         "skipLibCheck": true,
         "verbatimModuleSyntax": false,
         "outDir": "./dist",
-        "rootDir": "./src",
+        "rootDir": ".",
         "declaration": true,
         "sourceMap": true,
         "resolveJsonModule": true,
         "forceConsistentCasingInFileNames": true
     },
     "include": [
-        "src/**/*"
+        "src/**/*",
+        "skills/**/*"
     ],
     "exclude": [
         "node_modules",

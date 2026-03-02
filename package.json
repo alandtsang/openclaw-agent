@@ -7,12 +7,13 @@
         "dev": "tsx watch --require node-fetch-native/polyfill src/server_main.ts",
         "dev:cli": "tsx --require node-fetch-native/polyfill src/cli_main.ts",
         "build": "tsc",
-        "start": "node --require node-fetch-native/polyfill dist/server_main.js",
+        "start": "node --require node-fetch-native/polyfill dist/src/server_main.js",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@google/adk": "^0.4.0",
         "@google/genai": "^1.43.0",
+        "@larksuiteoapi/node-sdk": "^1.59.0",
         "dotenv": "^16.4.7",
         "duck-duck-scrape": "^2.2.7",
         "express": "^4.21.2",

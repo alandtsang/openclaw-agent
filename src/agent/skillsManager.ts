@@ -43,12 +43,15 @@ export async function getSkillTools(): Promise<any[]> {
 
                 // For dynamic imports during runtime, we import the exact code location.
                 let targetImport = '';
-                if (process.env.NODE_ENV === 'production' || __dirname.includes('dist')) {
-                    // In compiled output, try loading .js file directly from sibling output if compiled
-                    targetImport = `../../skills/${entry.name}/index.js`;
+
+                const hasTs = fs.existsSync(tsModulePath);
+                if (__dirname.includes('dist')) {
+                    // Running collected js from dist/src/agent
+                    // Skills are compiled to dist/skills/<name>/index.js
+                    const compiledSkillModule = path.join(__dirname, '../../skills', entry.name, 'index.js');
+                    targetImport = `file://${compiledSkillModule}`;
                 } else {
-                    // In local tsx, import the TS/JS via file protocol URI directly
-                    const hasTs = fs.existsSync(tsModulePath);
+                    // Running via tsx locally from src/agent
                     targetImport = hasTs ? `file://${tsModulePath}` : `file://${modulePath}`;
                 }
 

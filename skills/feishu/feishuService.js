@@ -5,56 +5,12 @@
  * via custom bot webhooks, and listen to incoming messages
  * via WebSocket (Persistent Connection).
  */
-
 import crypto from 'node:crypto';
 import * as lark from '@larksuiteoapi/node-sdk';
-
-export interface FeishuConfig {
-    webhookUrl?: string;
-    secret?: string;
-    appId?: string;
-    appSecret?: string;
-}
-
-interface FeishuTextMessage {
-    msg_type: 'text';
-    content: { text: string };
-    timestamp?: string;
-    sign?: string;
-}
-
-interface FeishuRichTextMessage {
-    msg_type: 'post';
-    content: {
-        post: {
-            zh_cn: {
-                title: string;
-                content: unknown[][];
-            };
-        };
-    };
-    timestamp?: string;
-    sign?: string;
-}
-
-interface FeishuCardMessage {
-    msg_type: 'interactive';
-    card: object;
-    timestamp?: string;
-    sign?: string;
-}
-
-type FeishuMessage = FeishuTextMessage | FeishuRichTextMessage | FeishuCardMessage;
-
 export class FeishuService {
-    private webhookUrl?: string;
-    private webhookSecret?: string;
-    public client?: lark.Client;
-
-    constructor(config: FeishuConfig) {
+    constructor(config) {
         this.webhookUrl = config.webhookUrl;
         this.webhookSecret = config.secret;
-
         if (config.appId && config.appSecret) {
             this.client = new lark.Client({
                 appId: config.appId,
@@ -63,21 +19,20 @@ export class FeishuService {
             });
         }
     }
-
     /**
      * Generate signature for webhook security verification
      */
-    private generateSign(timestamp: string): string {
-        if (!this.webhookSecret) return '';
+    generateSign(timestamp) {
+        if (!this.webhookSecret)
+            return '';
         const stringToSign = `${timestamp}\n${this.webhookSecret}`;
         const hmac = crypto.createHmac('sha256', stringToSign);
         return hmac.update('').digest('base64');
     }
-
     /**
      * Add authentication fields to the message if secret is configured
      */
-    private addAuth(message: FeishuMessage): FeishuMessage {
+    addAuth(message) {
         if (this.webhookSecret) {
             const timestamp = Math.floor(Date.now() / 1000).toString();
             message.timestamp = timestamp;
@@ -85,11 +40,10 @@ export class FeishuService {
         }
         return message;
     }
-
     /**
      * Send a raw message payload to the Feishu webhook
      */
-    private async send(message: FeishuMessage): Promise<{ success: boolean; error?: string }> {
+    async send(message) {
         if (!this.webhookUrl) {
             return { success: false, error: 'Webhook URL not configured.' };
         }
@@ -100,36 +54,30 @@ export class FeishuService {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
-
-            const result = (await response.json()) as { code?: number; msg?: string };
-
+            const result = (await response.json());
             if (result.code !== 0) {
                 return { success: false, error: result.msg || 'Unknown Feishu API error' };
             }
             return { success: true };
-        } catch (error) {
+        }
+        catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             return { success: false, error: `Failed to send Feishu notification: ${msg}` };
         }
     }
-
     /**
      * Send a plain text message via Webhook
      */
-    async sendText(text: string): Promise<{ success: boolean; error?: string }> {
+    async sendText(text) {
         return this.send({
             msg_type: 'text',
             content: { text },
         });
     }
-
     /**
      * Send a rich text (post) message via Webhook
      */
-    async sendRichText(
-        title: string,
-        content: unknown[][],
-    ): Promise<{ success: boolean; error?: string }> {
+    async sendRichText(title, content) {
         return this.send({
             msg_type: 'post',
             content: {
@@ -139,11 +87,10 @@ export class FeishuService {
             },
         });
     }
-
     /**
      * Send a plain text message via Official SDK (requires appId and appSecret)
      */
-    async replyText(receiveId: string, text: string, receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id' = 'open_id'): Promise<{ success: boolean; error?: string }> {
+    async replyText(receiveId, text, receiveIdType = 'open_id') {
         if (!this.client) {
             return { success: false, error: 'Feishu Client not initialized (missing appId/appSecret).' };
         }
@@ -159,66 +106,56 @@ export class FeishuService {
                 }
             });
             return { success: true };
-        } catch (error) {
+        }
+        catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             return { success: false, error: `Failed to send SDK message: ${msg}` };
         }
     }
-
     /**
      * Start the WebSocket server to listen to incoming events
      * @param onMessage Callback when a P2P or Group message is received
      */
-    async startWsServer(onMessage: (event: any, replyFn: (text: string) => Promise<void>) => Promise<void>) {
+    async startWsServer(onMessage) {
         if (!this.client) {
             console.warn('[Feishu WS] Cannot start WS server without FEISHU_APP_ID and FEISHU_APP_SECRET.');
             return;
         }
-
         const eventDispatcher = new lark.EventDispatcher({}).register({
             'im.message.receive_v1': async (data) => {
-                console.log(`[Feishu WS Client] Raw data received:`, JSON.stringify(data, null, 2));
                 const message = data.message;
                 const senderId = data.sender?.sender_id?.open_id || 'unknown'; // Default to open_id, adjust if needed
                 const chatId = message.chat_id;
                 const chatType = message.chat_type; // 'p2p' or 'group'
-
-                const replyFn = async (text: string) => {
+                const replyFn = async (text) => {
                     // For both p2p and group, we can reply directly to the chat
                     await this.replyText(chatId, text, 'chat_id');
                 };
-
                 await onMessage(data, replyFn);
                 return { code: 0 }; // Acknowledge the event
             }
         });
-
         const wsClient = new lark.WSClient({
-            appId: (this.client as any).appId || process.env.FEISHU_APP_ID!,
-            appSecret: (this.client as any).appSecret || process.env.FEISHU_APP_SECRET!,
+            appId: this.client.appId || process.env.FEISHU_APP_ID,
+            appSecret: this.client.appSecret || process.env.FEISHU_APP_SECRET,
         });
-
         wsClient.start({
             eventDispatcher,
         });
-
         console.log('[Feishu WS] WebSocket client started, listening for events...');
     }
 }
-
 /**
  * Create a FeishuService instance from environment variables
  */
-export function createFeishuService(): FeishuService | null {
+export function createFeishuService() {
     const webhookUrl = process.env.FEISHU_WEBHOOK_URL;
     const appId = process.env.FEISHU_APP_ID;
     const appSecret = process.env.FEISHU_APP_SECRET;
-
     if (!webhookUrl && (!appId || !appSecret)) {
         console.warn('[Feishu] Neither Webhook nor App credentials found, Feishu disabled.');
         return null;
     }
-
     return new FeishuService({
         webhookUrl,
         secret: process.env.FEISHU_WEBHOOK_SECRET || undefined,
@@ -226,3 +163,4 @@ export function createFeishuService(): FeishuService | null {
         appSecret,
     });
 }
+//# sourceMappingURL=feishuService.js.map

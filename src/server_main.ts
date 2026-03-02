@@ -12,6 +12,8 @@ import express from 'express';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
 import { initAgent } from './agent/index.js';
+// @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
+import { createFeishuService } from '../skills/feishu/feishuService.js';
 
 const app = express();
 app.use(express.json());
@@ -103,6 +105,79 @@ async function startServer() {
     const rootAgent = await initAgent();
     agentName = rootAgent.name;
     runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
+
+    // Start Feishu WS Server
+    const feishuService = createFeishuService();
+    if (feishuService) {
+        feishuService.startWsServer(async (event, replyFn) => {
+            try {
+                console.log('\n[Feishu WS] Received full event:', JSON.stringify(event, null, 2));
+                const contentObj = JSON.parse(event.message.content);
+                // Currently only handling text messages in WS
+                if (!contentObj.text) return;
+
+                const messageText = contentObj.text;
+                // Use open_id as user identifier
+                const senderOpenId = event.sender?.sender_id?.open_id || 'unknown';
+                const userId = `feishu-${senderOpenId}`;
+                const sessionId = `session-${userId}`;
+
+                const userContent: Content = {
+                    role: 'user',
+                    parts: [{ text: messageText }],
+                };
+
+                let responseText = '';
+
+                // Ensure session exists
+                try {
+                    const existingSession = await runner.sessionService.getSession({
+                        appName: 'openclaw',
+                        userId,
+                        sessionId
+                    });
+                    if (!existingSession) {
+                        await runner.sessionService.createSession({
+                            appName: 'openclaw',
+                            userId,
+                            sessionId,
+                        });
+                    }
+                } catch (e) {
+                    // Fallback create if getSession actually throws
+                    await runner.sessionService.createSession({
+                        appName: 'openclaw',
+                        userId,
+                        sessionId,
+                    });
+                }
+
+                const turn = runner.runAsync({
+                    userId,
+                    sessionId,
+                    newMessage: userContent,
+                });
+
+                for await (const chunk of turn) {
+                    if (chunk.errorMessage) {
+                        responseText += `[API Error]: ${chunk.errorMessage}\\n`;
+                    } else if (chunk.content?.parts) {
+                        for (const part of chunk.content.parts) {
+                            if (part.text && chunk.content.role === 'model') {
+                                responseText += part.text;
+                            }
+                        }
+                    }
+                }
+
+                if (responseText) {
+                    await replyFn(responseText);
+                }
+            } catch (err) {
+                console.error('[Feishu WS] Error processing message:', err);
+            }
+        }).catch(err => console.error('[Feishu WS] Failed to start:', err));
+    }
 
     const PORT = parseInt(process.env.PORT || '3000', 10);
     app.listen(PORT, () => {
