@@ -24,13 +24,13 @@ export const updateMemory = new FunctionTool({
 
             if (action === 'overwrite') {
                 fs.writeFileSync(MEMORY_FILE_PATH, content, 'utf-8');
-                return 'Successfully overwrote MEMORY.md.';
+                return { status: 'success', message: 'Successfully overwrote MEMORY.md.' };
             } else {
                 fs.appendFileSync(MEMORY_FILE_PATH, `\n${content}\n`, 'utf-8');
-                return 'Successfully appended new information to MEMORY.md.';
+                return { status: 'success', message: 'Successfully appended new information to MEMORY.md.' };
             }
         } catch (error) {
-            return `Failed to update MEMORY.md: ${String(error)}`;
+            return { status: 'error', message: `Failed to update MEMORY.md: ${String(error)}` };
         }
     },
 });

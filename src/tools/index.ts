@@ -1,9 +1,9 @@
 /**
  * Tools Index
  *
- * Exports all agent tools for easy import.
+ * Exports all agent built-in tools for easy import into the core agent logic.
  */
 
-export { getCurrentTime } from './getCurrentTime.js';
-export { executeCommand } from './executeCommand.js';
+export { fsTools } from './fsTools.js';
+export { cmdTools } from './cmdTools.js';
 export { updateMemory } from './updateMemory.js';
