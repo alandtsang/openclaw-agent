@@ -13,6 +13,8 @@ import {
     getAgentInstruction,
 } from './instructions.js';
 import { getSkillTools, loadSkillsPrompt } from './skillsManager.js';
+import { fsTools } from '../tools/fsTools.js';
+import { cmdTools } from '../tools/cmdTools.js';
 
 /**
  * Resolve the LLM model identifier.
@@ -26,7 +28,12 @@ function getModelId(): string {
  * It dynamically discovers skills mappings and tools.
  */
 export async function initAgent(): Promise<LlmAgent> {
-    const dynamicTools = await getSkillTools();
+    const dynamicTools = [
+        ...await getSkillTools(),
+        ...fsTools,
+        ...cmdTools,
+    ];
+
     const skillsPrompt = await loadSkillsPrompt();
 
     return new LlmAgent({
