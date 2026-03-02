@@ -1,88 +1,84 @@
-# OpenClaw Agent (Google ADK)
+# OpenClaw Agent
 
-A customizable, autonomous AI Assistant similar to OpenClaw, built using the [Google Agent Development Kit (ADK) for TypeScript](https://github.com/google/agent-development-kit).
+A customizable, autonomous AI Assistant, built using the [Google Agent Development Kit (ADK) for TypeScript](https://github.com/google/agent-development-kit).
 
-This agent has an established personality, can safely execute whitelisted shell commands, fetch time across timezones, and integrations with Feishu Webhooks to send notifications to group chats.
+This agent has an established personality, operates with dynamic skills, integrates with Feishu (Lark) Bot via Event Subscriptions for bidirectional chat, and possesses **Self-Evolution capabilities**—meaning it can learn, write, and install its own skills at runtime!
 
-## Features
+## Key Features
 
-- **Built with Google ADK for TypeScript**: Native typed multi-agent framework
-- **Model Agnostic**: Can use DeepSeek, GLM, OpenAI, or Google Gemini through LiteLLM proxy syntax
-- **Tool Access**:
-  - `getCurrentTime`: Timezone-aware time lookup
-  - `executeCommand`: Secure, sandboxed shell command execution (whitelist-only)
-  - `sendFeishuNotification`: Push text/rich-text messages to Feishu groups
-  - `webSearch`: Extensible internet search interface
-- **Dual Interfaces**: 
-  - Express HTTP server for cloud/API integration
-  - Interactive CLI for local debugging
-- **Cloud Native**: Includes Docker and Docker-Compose support
+- **Google ADK Native**: Typed multi-agent framework utilizing `InMemoryRunner`.
+- **Model Agnostic**: Can use DeepSeek, GLM, OpenAI, or Google Gemini through LiteLLM proxy syntax.
+- **Feishu Bidirectional Messaging**: Native `@larksuiteoapi/node-sdk` integration. Users can chat directly with the bot in Feishu via WebSocket (WS) mode—no public webhook endpoint required.
+- **Self-Evolution & Dynamic Skills**:
+  - Automatically loads tools from the `skills/` directory.
+  - Using built-in `fsTools` and `cmdTools`, the agent can create new folders, write TypeScript code, install npm dependencies, and generate new ADK `FunctionTool` modules for itself upon user request.
+- **Persistent Memory**: Uses `updateMemory` tool to record user preferences and facts dynamically to `MEMORY.md`.
 
 ## Prerequisites
 
 - Node.js >= 20.0.0
-- An API Key from an LLM provider (e.g., DeepSeek, Zhipu AI / GLM, or Google Gemini)
-- (Optional) A Feishu custom bot webhook URL
+- An API Key from an LLM provider (e.g., DeepSeek, GLM, or Google Gemini)
+- A Feishu App with Bot capabilities and Event Subscriptions enabled (WebSocket mode).
 
 ## Installation
 
 1. Clone the repository and install dependencies:
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 
-2. Copy the `.env.example` file to create your own `.env` file:
-   \`\`\`bash
+2. Copy the `.env.example` file to create your own configuration:
+   ```bash
    cp .env.example .env
-   \`\`\`
+   ```
 
-3. Edit `.env` to configure your LLM and Feishu settings. 
-   *(See .env.example for detailed configuration instructions)*.
+3. Edit `.env` to configure your LLM and Feishu settings:
+   ```env
+   FEISHU_APP_ID=cli_your_feishu_app_id
+   FEISHU_APP_SECRET=your_feishu_app_secret
+   LLM_API_KEY=your_gemini_or_deepseek_key
+   ```
 
 ## Usage
 
-### CLI Interactive Mode
-For quick local testing and chatting directly with the agent:
-\`\`\`bash
-npm run dev:cli
-\`\`\`
-
-### HTTP Server Mode
-Start the Express server exposing the `/chat` and `/health` endpoints:
-\`\`\`bash
-# Development (with auto-reload)
-npm run dev
-
-# Production Build & Run
+### 1. HTTP + WebSocket Server Mode (Recommended)
+This starts the Express server and connects the Feishu WS listener. Use this if you want to chat via the Feishu app.
+```bash
+# Build the typescript project
 npm run build
+
+# Start the server
 npm start
-\`\`\`
+```
+*Once running, go to your Feishu Bot and send a message. The agent will process and reply.*
+
+### 2. CLI Interactive Mode
+For quick local testing and chatting directly with the agent without Feishu:
+```bash
+npm run dev:cli
+```
 
 ### HTTP Endpoints
 
 **POST `/chat`**
-Send a message to the agent:
-\`\`\`bash
-curl -X POST http://localhost:3000/chat \\
-  -H "Content-Type: application/json" \\
-  -d '{"message": "Tell me the current time in Tokyo and list files in my home directory"}'
-\`\`\`
+Send a message to the agent directly via REST API:
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, update your memory that my favorite color is blue"}'
+```
 
 **GET `/health`**
-Used for load balancer health checking.
+Health check endpoint.
 
-## Docker Deployment
-
-1. Make sure your `.env` file is fully configured.
-2. Build and run using Docker Compose:
-   \`\`\`bash
-   docker-compose up -d
-   \`\`\`
-3. Check logs:
-   \`\`\`bash
-   docker-compose logs -f
-   \`\`\`
+## Project Structure
+- `src/agent/` - ADK Agent definitions, instructions, and skill loaders.
+- `src/tools/` - Built-in native tools (FileSystem, Command Execution, Memory Update).
+- `skills/` - Dynamically loaded skills. The agent writes to this directory to self-evolve.
+- `src/server_main.ts` - Entry point for the Express and Feishu WebSocket server.
+- `src/cli_main.ts` - Entry point for local CLI chat.
+- `SOUL.md` & `MEMORY.md` - Agent persona definitions and dynamic persistent user memories.
 
 ## Security Notes
-- The `executeCommand` tool has a strictly hardcoded whitelist (`ls`, `pwd`, `date`, `whoami`, `uname`, etc.) and blocks all shell meta-characters (like `||`, `&&`, backticks) to prevent command injection. 
-- Avoid running the agent under the `root` user context. The provided Dockerfile uses a non-root user `appuser`.
+- The agent has access to `cmdTools` to execute shell commands. It is heavily instructed to avoid dangerous operations, but it operates within the privileges of the Node process.
+- Avoid running the agent under the `root` user context.
