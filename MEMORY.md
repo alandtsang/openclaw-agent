@@ -17,3 +17,6 @@
 ## Preferences
 - 用户给我起名为“没头脑”。
 
+
+
+- 用户要求我安装了 `skill-creator` 技能，它位于 `skills/skill-creator` 目录下。
