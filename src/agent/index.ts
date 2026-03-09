@@ -13,7 +13,7 @@ import {
     getAgentInstruction,
 } from './instructions.js';
 import { getSkillTools, loadSkillsPrompt } from './skillsManager.js';
-import { fsTools, cmdTools, updateMemory, anthropicInstaller } from '../tools/index.js';
+import { fsTools, cmdTools, updateMemory, anthropicInstaller, cronTools } from '../tools/index.js';
 
 /**
  * Resolve the LLM model identifier.
@@ -31,6 +31,7 @@ export async function initAgent(): Promise<LlmAgent> {
         ...await getSkillTools(),
         ...fsTools,
         ...cmdTools,
+        ...cronTools,
         updateMemory,
         anthropicInstaller,
     ];

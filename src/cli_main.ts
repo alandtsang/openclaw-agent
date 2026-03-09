@@ -10,6 +10,7 @@ import * as readline from 'node:readline';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
 import { initAgent } from './agent/index.js';
+import * as cronScheduler from './cron/index.js';
 
 async function main() {
     console.log('╔═══════════════════════════════════════════════╗');
@@ -24,6 +25,10 @@ async function main() {
     // Create runner and session
     const rootAgent = await initAgent();
     const runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
+
+    // Initialize cron scheduler
+    cronScheduler.init(runner);
+
     const userId = 'cli-user';
     const session = await runner.sessionService.createSession({
         appName: 'openclaw',

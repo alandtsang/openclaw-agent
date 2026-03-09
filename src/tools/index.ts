@@ -8,3 +8,4 @@ export { fsTools } from './fsTools.js';
 export { cmdTools } from './cmdTools.js';
 export { updateMemory } from './updateMemory.js';
 export { anthropicInstaller } from './anthropicInstaller.js';
+export { cronTools } from './cronTools.js';

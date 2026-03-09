@@ -12,6 +12,7 @@ import express from 'express';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
 import { initAgent } from './agent/index.js';
+import * as cronScheduler from './cron/index.js';
 // @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
 import { createFeishuService } from '../skills/feishu/feishuService.js';
 
@@ -100,6 +101,22 @@ app.post('/chat', async (req, res) => {
     }
 });
 
+// ─── Cron REST API ─────────────────────────────────────────────────
+
+app.get('/cron/jobs', (_req, res) => {
+    const jobs = cronScheduler.listJobs();
+    res.json({ jobs });
+});
+
+app.delete('/cron/jobs/:id', (req, res) => {
+    const removed = cronScheduler.unscheduleJob(req.params.id);
+    if (removed) {
+        res.json({ status: 'ok', message: `Job ${req.params.id} removed` });
+    } else {
+        res.status(404).json({ status: 'error', message: 'Job not found' });
+    }
+});
+
 // Start the server
 async function startServer() {
     const rootAgent = await initAgent();
@@ -108,10 +125,39 @@ async function startServer() {
 
     // Start Feishu WS Server
     const feishuService = createFeishuService();
+
+    // Track the default chat_id for cron notifications
+    let defaultChatId = process.env.FEISHU_CRON_CHAT_ID || '';
+
+    // Initialize cron scheduler with Feishu SDK notification callback
+    const cronNotifyFn = feishuService?.client
+        ? async (jobName: string, responseText: string) => {
+            if (!defaultChatId) {
+                console.warn('[CronScheduler] No chat_id available for notification, skipping.');
+                return;
+            }
+            try {
+                const text = `⏰ 定时任务「${jobName}」执行结果:\n\n${responseText.slice(0, 2000)}`;
+                await feishuService.replyText(defaultChatId, text, 'chat_id');
+                console.log('[CronScheduler] 📨 Feishu notification sent via SDK');
+            } catch (err) {
+                console.warn('[CronScheduler] Feishu SDK notify error:', err);
+            }
+        }
+        : undefined;
+    cronScheduler.init(runner, cronNotifyFn);
+
     if (feishuService) {
         feishuService.startWsServer(async (event, replyFn) => {
             try {
                 console.log('\n[Feishu WS] Received full event:', JSON.stringify(event, null, 2));
+
+                // Auto-capture chat_id for cron notifications
+                if (!defaultChatId && event.message?.chat_id) {
+                    defaultChatId = event.message.chat_id;
+                    console.log(`[CronScheduler] 📌 Auto-captured chat_id: ${defaultChatId}`);
+                }
+
                 const contentObj = JSON.parse(event.message.content);
                 // Currently only handling text messages in WS
                 if (!contentObj.text) return;
@@ -191,6 +237,15 @@ async function startServer() {
         console.log('║    GET  /health  — Health check               ║');
         console.log('╚═══════════════════════════════════════════════╝');
     });
+
+    // Graceful shutdown
+    const shutdown = () => {
+        console.log('\n[Server] Shutting down...');
+        cronScheduler.stop();
+        process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
 }
 
 startServer().catch(console.error);
