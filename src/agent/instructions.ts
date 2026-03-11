@@ -31,11 +31,21 @@ export function getAgentInstruction(dynamicSkillsPrompt: string = ''): string {
         memoryContent = '(MEMORY.md not found or unreadable)';
     }
 
+    let claudeContent = '';
+    try {
+        claudeContent = fs.readFileSync(path.join(rootDir, 'CLAUDE.md'), 'utf-8');
+    } catch (e) {
+        claudeContent = '(CLAUDE.md not found or unreadable. Proceed normally.)';
+    }
+
     return `
 你是 OpenClaw Agent —— 一个强大的自主 AI 助手。
 
 === 核心人格与法则 (SOUL.md) ===
 ${soulContent}
+
+=== 项目级指令与规约 (CLAUDE.md) ===
+${claudeContent}
 
 === 用户偏好与长期记忆 (MEMORY.md) ===
 ${memoryContent}
@@ -46,7 +56,7 @@ ${dynamicSkillsPrompt}
 
 ## 安全与格式要求
 - 始终以中文回复。
-- 在回答问题时，优先参考 MEMORY.md 中记录的用户习惯和上下文信息来制定回答策略。
+- 在回答问题时，优先参考 MEMORY.md 和 CLAUDE.md 中记录的上下文信息和项目约束来制定回答策略。若 MEMORY.md 包含对其他文件的索引，请在需要时主动通过文件读取工具查看详细内容。
 - 拒绝执行可能破坏系统的危险操作。
 
 ## 自我演化 (Self-Evolution) 能力
