@@ -14,7 +14,11 @@ export const generate_pptx_tool = new FunctionTool({
     parameters: z.object({
         filename: z.string().describe('The name of the file to save, e.g. output/presentation.pptx'),
         title: z.string().describe('The title of the presentation'),
-        theme: z.enum(['modern', 'dark', 'corporate', 'elegant']).optional().describe('The visual theme of the presentation'),
+        theme: z.enum([
+            'modern', 'dark', 'corporate', 'elegant', 
+            'tech', 'minimalist', 'nature', 'vibrant',
+            'cute', 'retro', 'gradient', 'neon'
+        ]).optional().describe('The visual theme: modern(现代), dark(暗黑), corporate(商务), elegant(优雅), tech(科技), minimalist(极简), nature(自然), vibrant(活力), cute(可爱), retro(复古), gradient(渐变), neon(霓虹)'),
         slides: z.array(z.object({
             title: z.string().describe('The title text for this slide'),
             content: z.string().describe('The main content/bullets for this slide')
@@ -46,6 +50,23 @@ export const generate_pptx_tool = new FunctionTool({
                 titleBg = '003366'; titleColor = 'FFFFFF'; masterBg = 'F5F5F7'; masterTitleColor = '003366'; masterContentColor = '333333';
             } else if (selectedTheme === 'elegant') {
                 titleBg = '4A4E69'; titleColor = 'F2E9E4'; masterBg = 'F2E9E4'; masterTitleColor = '22223B'; masterContentColor = '4A4E69';
+            } else if (selectedTheme === 'tech') {
+                titleBg = '0B192C'; titleColor = '00FFCB'; masterBg = '0F2C59'; masterTitleColor = '00FFCB'; masterContentColor = 'E2F6CA';
+            } else if (selectedTheme === 'minimalist') {
+                titleBg = 'FFFFFF'; titleColor = '111111'; masterBg = 'FAFAFA'; masterTitleColor = '222222'; masterContentColor = '555555';
+            } else if (selectedTheme === 'nature') {
+                titleBg = 'E8F3D6'; titleColor = '285430'; masterBg = 'FCFDF2'; masterTitleColor = '5F8D4E'; masterContentColor = '3A4F41';
+            } else if (selectedTheme === 'vibrant') {
+                titleBg = 'FF5722'; titleColor = 'FFFFFF'; masterBg = 'FFF8E1'; masterTitleColor = 'FF5722'; masterContentColor = '333333';
+            } else if (selectedTheme === 'cute') {
+                titleBg = 'FFD1D1'; titleColor = 'FF9494'; masterBg = 'FFF5E4'; masterTitleColor = 'FF9494'; masterContentColor = '8B7E74';
+            } else if (selectedTheme === 'retro') {
+                titleBg = '8B5E34'; titleColor = 'FFEEDB'; masterBg = 'F4EBD0'; masterTitleColor = '8B5E34'; masterContentColor = '5C4033';
+            } else if (selectedTheme === 'gradient') {
+                // pptxgenjs doesn't natively support gradients easily via background object here, using a solid vivid color
+                titleBg = '8A2BE2'; titleColor = 'FFFFFF'; masterBg = 'F8F8FF'; masterTitleColor = '8A2BE2'; masterContentColor = '191970';
+            } else if (selectedTheme === 'neon') {
+                titleBg = '000000'; titleColor = 'FF00FF'; masterBg = '111111'; masterTitleColor = '00FFFF'; masterContentColor = 'E0E0E0';
             }
 
             pres.defineSlideMaster({

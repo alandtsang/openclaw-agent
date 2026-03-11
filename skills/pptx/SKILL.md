@@ -16,6 +16,25 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ---
 
+## Supported Themes (风格模板)
+
+When generating a presentation using the `generate_pptx` tool, you can select from the following 12 visual themes using the `theme` parameter. Map the user's Chinese keywords to these exact lowercase enum values:
+
+1. **modern** (现代): Deep blue background with high-contrast white text.
+2. **dark** (暗黑): Pitch black background with white/gray text.
+3. **corporate** (商务): Professional navy blue title slide with clean off-white content slides.
+4. **elegant** (优雅): Violet/taupe aesthetic for a soft, premium feel.
+5. **tech** (科技): Dark navy background with cyan/neon green accents.
+6. **minimalist** (极简): Pure white/light gray background with sleek dark text.
+7. **nature** (自然): Warm cream/green background focusing on organic colors.
+8. **vibrant** (活力): Bright orange/red energetic colors.
+9. **cute** (可爱): Pastel pink and warm cream colors.
+10. **retro** (复古): Brown/sepia tones resembling aged paper or classic design.
+11. **gradient** (渐变): Vivid electric purple/indigo aesthetic.
+12. **neon** (霓虹): Pitch black with magenta/cyan cyberpunk highlights.
+
+---
+
 ## Reading Content
 
 ```bash
