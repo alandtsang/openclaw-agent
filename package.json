@@ -19,6 +19,7 @@
         "duck-duck-scrape": "^2.2.7",
         "express": "^4.21.2",
         "node-fetch-native": "^1.6.7",
+        "pptxgenjs": "^4.0.1",
         "web-streams-polyfill": "^4.2.0",
         "yaml": "^2.8.2",
         "zod": "^4.3.6"
