@@ -15,6 +15,8 @@ import { initAgent } from './agent/index.js';
 import * as cronScheduler from './cron/index.js';
 // @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
 import { createFeishuService } from '../skills/feishu/feishuService.js';
+// @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
+import { createGeneratePptxTool } from '../skills/pptx/index.js';
 
 const app = express();
 app.use(express.json());
@@ -117,17 +119,18 @@ app.delete('/cron/jobs/:id', (req, res) => {
     }
 });
 
-// Start the server
 async function startServer() {
-    const rootAgent = await initAgent();
-    agentName = rootAgent.name;
-    runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
-
-    // Start Feishu WS Server
     const feishuService = createFeishuService();
 
     // Track the default chat_id for cron notifications
     let defaultChatId = process.env.FEISHU_CRON_CHAT_ID || '';
+
+    // Build Feishu-aware PPTX tool (auto-uploads to the active group chat)
+    const pptxTool = createGeneratePptxTool(feishuService ?? undefined, () => defaultChatId);
+
+    const rootAgent = await initAgent([pptxTool]);
+    agentName = rootAgent.name;
+    runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
 
     // Initialize cron scheduler with Feishu SDK notification callback
     const cronNotifyFn = feishuService?.client
@@ -152,10 +155,12 @@ async function startServer() {
             try {
                 console.log('\n[Feishu WS] Received full event:', JSON.stringify(event, null, 2));
 
-                // Auto-capture chat_id for cron notifications
-                if (!defaultChatId && event.message?.chat_id) {
-                    defaultChatId = event.message.chat_id;
-                    console.log(`[CronScheduler] 📌 Auto-captured chat_id: ${defaultChatId}`);
+                // Auto-capture chat_id for cron notifications and tool uploads
+                if (event.message?.chat_id) {
+                    if (defaultChatId !== event.message.chat_id) {
+                        console.log(`[Feishu] 📌 Switching active chat_id to: ${event.message.chat_id}`);
+                        defaultChatId = event.message.chat_id;
+                    }
                 }
 
                 const contentObj = JSON.parse(event.message.content);

@@ -25,10 +25,18 @@ function getModelId(): string {
 /**
  * Async factory to initialize the OpenClaw-like autonomous assistant.
  * It dynamically discovers skills mappings and tools.
+ * @param extraTools Optional list of ADK tools to inject, overriding any skill tool with the same name.
  */
-export async function initAgent(): Promise<LlmAgent> {
+export async function initAgent(extraTools?: any[]): Promise<LlmAgent> {
+    const skillTools = await getSkillTools();
+
+    // Override any skill tools with injected ones (matched by name)
+    const overrideNames = new Set((extraTools || []).map(t => t.name));
+    const filteredSkillTools = skillTools.filter(t => !overrideNames.has(t.name));
+
     const dynamicTools = [
-        ...await getSkillTools(),
+        ...filteredSkillTools,
+        ...(extraTools || []),
         ...fsTools,
         ...cmdTools,
         ...cronTools,

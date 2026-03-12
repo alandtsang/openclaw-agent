@@ -166,6 +166,76 @@ export class FeishuService {
     }
 
     /**
+     * Upload a file and send it as a file message to a chat
+     * @param chatId The target chat_id
+     * @param filePath Absolute path to the file on disk
+     * @param fileName Override display name for the file (defaults to basename)
+     */
+    async sendFile(chatId: string, filePath: string, fileName?: string): Promise<{ success: boolean; error?: string }> {
+        if (!this.client) {
+            return { success: false, error: 'Feishu Client not initialized (missing appId/appSecret).' };
+        }
+        try {
+            const fs = await import('node:fs');
+            const path = await import('node:path');
+            const displayName = fileName || path.basename(filePath);
+            
+            if (!fs.existsSync(filePath)) {
+                return { success: false, error: `File not found at path: ${filePath}` };
+            }
+
+            const stream = fs.createReadStream(filePath);
+
+            console.log(`[Feishu sendFile] 📤 Uploading file: ${displayName} from ${filePath}`);
+
+            // Upload file
+            const uploadRes = await (this.client as any).im.file.create({
+                data: {
+                    file_type: 'stream',
+                    file_name: displayName,
+                    file: stream,
+                },
+            });
+
+            console.log(`[Feishu sendFile] 📥 Upload response:`, JSON.stringify(uploadRes));
+
+            // Small SDK quirk: sometimes it returns raw data without code/msg wrapper
+            const fileKey = uploadRes?.data?.file_key || uploadRes?.file_key;
+            if (!fileKey) {
+                const errorCode = uploadRes?.code;
+                const errorMsg = uploadRes?.msg || 'Missing file_key';
+                return { success: false, error: `Upload failed (code ${errorCode}): ${errorMsg}` };
+            }
+
+            console.log(`[Feishu sendFile] 📨 Sending file message. key=${fileKey}, chat=${chatId}`);
+
+            // Send file message to chat
+            const sendRes = await this.client.im.message.create({
+                params: { receive_id_type: 'chat_id' },
+                data: {
+                    receive_id: chatId,
+                    msg_type: 'file',
+                    content: JSON.stringify({ file_key: fileKey }),
+                },
+            });
+
+            console.log(`[Feishu sendFile] 📥 Send response:`, JSON.stringify(sendRes));
+
+            // If code exists and is non-zero, it's an error. If code is missing, we assume success if no error was thrown.
+            if (sendRes?.code !== undefined && sendRes.code !== 0) {
+                return { success: false, error: `Send failed (code ${sendRes.code}): ${sendRes.msg}` };
+            }
+
+            console.log(`[Feishu sendFile] ✅ File sent successfully`);
+            return { success: true };
+        } catch (error) {
+            console.error(`[Feishu sendFile] ❌ Critical Error:`, error);
+            const msg = error instanceof Error ? error.message : String(error);
+            return { success: false, error: `Failed to send file as message: ${msg}` };
+        }
+    }
+
+    /**
      * Start the WebSocket server to listen to incoming events
      * @param onMessage Callback when a P2P or Group message is received
      */
