@@ -99,5 +99,5 @@ ${dynamicSkillsPrompt}
 - 当用户要求定时提醒、定时执行任务时，使用 cron_add 创建任务。
 - 在删除任务前，先用 cron_list 获取任务列表和 ID。
 - 定时触发时 Agent 会在独立会话中执行 prompt 中描述的操作。
-  `.trim();
+`.trim();
 }

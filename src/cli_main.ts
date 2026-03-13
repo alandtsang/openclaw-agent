@@ -1,106 +1,89 @@
+#!/usr/bin/env tsx
+
 /**
- * CLI Entry Point
- *
- * Interactive command-line interface for chatting with the agent.
- * Useful for local development and debugging.
+ * OpenClaw Agent CLI
+ * 
+ * An interactive command-line interface for the autonomous agent.
  */
 
 import 'dotenv/config';
+
+// Robust polyfills for Node.js < 18
+import * as webStreams from 'web-streams-polyfill';
+Object.assign(globalThis, webStreams);
+
+import 'node-fetch-native/polyfill';
+
 import * as readline from 'node:readline';
 import { InMemoryRunner } from '@google/adk';
-import type { Content } from '@google/genai';
 import { initAgent } from './agent/index.js';
-import * as cronScheduler from './cron/index.js';
+import { HookExecutor } from './agent/hookExecutor.js';
 
 async function main() {
-    console.log('╔═══════════════════════════════════════════════╗');
-    console.log('║        🐾 OpenClaw Agent CLI Mode            ║');
-    console.log('╠═══════════════════════════════════════════════╣');
-    console.log('║  Type your message and press Enter to chat.  ║');
-    console.log('║  Type "exit" or "quit" to leave.             ║');
-    console.log(`║  Model: ${(process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat').padEnd(37)}║`);
-    console.log('╚═══════════════════════════════════════════════╝');
-    console.log();
+    console.log('\x1b[36m%s\x1b[0m', '╔═══════════════════════════════════════════════╗');
+    console.log('\x1b[36m%s\x1b[0m', '║        🐾 OpenClaw Agent CLI Mode            ║');
+    console.log('\x1b[36m%s\x1b[0m', '╠═══════════════════════════════════════════════╣');
+    console.log('\x1b[36m%s\x1b[0m', '║  Type your message and press Enter to chat.  ║');
+    console.log('\x1b[36m%s\x1b[0m', '║  Type "exit" or "quit" to leave.             ║');
+    console.log('\x1b[36m%s\x1b[0m', `║  Model: ${process.env.LLM_MODEL || 'default'}              ║`);
+    console.log('\x1b[36m%s\x1b[0m', '╚═══════════════════════════════════════════════╝');
 
-    // Create runner and session
-    const rootAgent = await initAgent();
-    const runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
-
-    // Initialize cron scheduler
-    cronScheduler.init(runner);
-
-    const userId = 'cli-user';
-    const session = await runner.sessionService.createSession({
-        appName: 'openclaw',
-        userId,
-    });
+    const { agent, hooks } = await initAgent();
+    const runner = new InMemoryRunner({ agent: agent as any });
+    const hookExecutor = new HookExecutor(runner, hooks);
+    const userId = 'alandtsang';
 
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
+        prompt: '\n🧑 \x1b[32mYou:\x1b[0m  ',
     });
 
-    const prompt = () => {
-        rl.question('🧑 You: ', async (input) => {
-            const trimmed = input.trim();
+    rl.prompt();
 
-            if (!trimmed) {
-                prompt();
-                return;
-            }
+    rl.on('line', async (line) => {
+        const input = line.trim();
+        if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
+            process.exit(0);
+        }
 
-            if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
-                console.log('\n👋 Goodbye!');
-                rl.close();
-                process.exit(0);
-            }
+        if (!input) {
+            rl.prompt();
+            return;
+        }
 
-            try {
-                const userContent: Content = {
-                    role: 'user',
-                    parts: [{ text: trimmed }],
-                };
+        try {
+            const session = await (runner as any).sessionService.createSession();
+            const turn = runner.runAsync({
+                userId,
+                sessionId: session.id,
+                newMessage: { role: 'user', parts: [{ text: input }] },
+            });
 
-                let responseText = '';
-                const turn = runner.runAsync({
-                    userId,
-                    sessionId: session.id,
-                    newMessage: userContent,
-                });
-
-                process.stdout.write('🤖 Agent: ');
-
-                for await (const event of turn) {
-                    if (event.errorMessage) {
-                        const errMsg = `[API Error ${event.errorCode || ''}]: ${event.errorMessage}`;
-                        process.stdout.write(errMsg);
-                        responseText += errMsg;
-                    } else if (event.content?.parts) {
-                        for (const part of event.content.parts) {
-                            if (part.text && event.content.role === 'model') {
-                                process.stdout.write(part.text);
-                                responseText += part.text;
-                            }
+            process.stdout.write('\n🤖 \x1b[35mAgent:\x1b[0m ');
+            
+            for await (const event of turn) {
+                if (event.author === agent.name && event.content) {
+                    const parts = event.content.parts || [];
+                    for (const part of parts) {
+                        if ('text' in part && part.text) {
+                            process.stdout.write(part.text);
                         }
                     }
+                } else if (event.errorMessage) {
+                    process.stdout.write(`\n[API Error]: ${event.errorMessage}`);
                 }
-
-                if (!responseText) {
-                    console.log('(No response)');
-                } else {
-                    console.log(); // newline after streaming
-                }
-            } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
-                console.error(`\n❌ Error: ${msg}`);
             }
+            console.log('\n');
+            
+            await hookExecutor.executePostCompletionHooks(userId, session.id);
+            
+        } catch (error: any) {
+            console.error('\n\x1b[31m[Error]:\x1b[0m', error.message || error);
+        }
 
-            console.log();
-            prompt();
-        });
-    };
-
-    prompt();
+        rl.prompt();
+    });
 }
 
 main().catch(console.error);

@@ -6,6 +6,7 @@
  */
 
 import 'dotenv/config';
+import 'node-fetch-native/polyfill';
 import { LlmAgent } from '@google/adk';
 import {
     AGENT_NAME,
@@ -19,7 +20,7 @@ import { fsTools, cmdTools, updateMemory, anthropicInstaller, cronTools } from '
  * Resolve the LLM model identifier.
  */
 function getModelId(): string {
-    return process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat';
+    return process.env.LLM_MODEL || 'gemini-1.5-flash';
 }
 
 /**
@@ -27,7 +28,7 @@ function getModelId(): string {
  * It dynamically discovers skills mappings and tools.
  * @param extraTools Optional list of ADK tools to inject, overriding any skill tool with the same name.
  */
-export async function initAgent(extraTools?: any[]): Promise<LlmAgent> {
+export async function initAgent(extraTools?: any[]): Promise<{ agent: LlmAgent; hooks: any[] }> {
     const skillTools = await getSkillTools();
 
     // Override any skill tools with injected ones (matched by name)
@@ -46,11 +47,19 @@ export async function initAgent(extraTools?: any[]): Promise<LlmAgent> {
 
     const skillsPrompt = await loadSkillsPrompt();
 
-    return new LlmAgent({
+    const instruction = getAgentInstruction(skillsPrompt.prompt);
+    const model = getModelId();
+
+    const agent = new LlmAgent({
         name: AGENT_NAME,
-        model: getModelId(),
+        model: model,
         description: AGENT_DESCRIPTION,
-        instruction: getAgentInstruction(skillsPrompt),
+        instruction: instruction,
         tools: dynamicTools,
     });
+    
+    return {
+        agent,
+        hooks: skillsPrompt.hooks
+    };
 }
