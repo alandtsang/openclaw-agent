@@ -78,7 +78,10 @@ app.post('/chat', async (req, res) => {
                 for (const part of (event as any).content.parts) {
                     if (part.functionCall) {
                         toolCalls++;
-                        console.log(`[Chat] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                        const argsStr = typeof part.functionCall.args === 'string'
+                            ? part.functionCall.args.substring(0, 200)
+                            : JSON.stringify(part.functionCall.args)?.substring(0, 200);
+                        console.log(`[Chat] Tool call: ${part.functionCall.name}`, argsStr);
                     }
                     if (part.functionResponse) {
                         toolResults++;
@@ -174,11 +177,15 @@ async function startServer() {
                         for (const part of (chunk as any).content.parts) {
                             if (part.functionCall) {
                                 toolCalls++;
-                                console.log(`[Feishu WS] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                                const argsStr = typeof part.functionCall.args === 'string'
+                                    ? part.functionCall.args.substring(0, 200)
+                                    : JSON.stringify(part.functionCall.args)?.substring(0, 200);
+                                console.log(`[Feishu WS] Tool call: ${part.functionCall.name}`, argsStr);
                             }
                             if (part.functionResponse) {
                                 toolResults++;
-                                console.log(`[Feishu WS] Tool result: ${part.functionResponse.name} - response:`, JSON.stringify(part.functionResponse.response)?.substring(0, 500));
+                                const respName = part.functionResponse.name || 'unknown';
+                                console.log(`[Feishu WS] Tool result: ${respName} - response:`, JSON.stringify(part.functionResponse.response)?.substring(0, 500));
                             }
                         }
                     }
