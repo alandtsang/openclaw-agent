@@ -63,15 +63,32 @@ app.post('/chat', async (req, res) => {
         };
 
         let responseText = '';
+        console.log(`[Chat] Running agent with message: "${message}"`);
         const turn = runner.runAsync({
             userId,
             sessionId,
             newMessage: userContent,
         });
 
+        let toolCalls = 0;
+        let toolResults = 0;
         for await (const event of turn) {
+            // Debug: log all events
+            if ((event as any).content?.parts) {
+                for (const part of (event as any).content.parts) {
+                    if (part.functionCall) {
+                        toolCalls++;
+                        console.log(`[Chat] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                    }
+                    if (part.functionResponse) {
+                        toolResults++;
+                        console.log(`[Chat] Tool result: ${part.functionResponse.name} - response length:`, JSON.stringify(part.functionResponse.response)?.length);
+                    }
+                }
+            }
             if (event.errorMessage) {
                 responseText += `[API Error]: ${event.errorMessage}`;
+                console.log(`[Chat] Error: ${event.errorMessage}`);
             } else if (event.content?.parts) {
                 for (const part of event.content.parts) {
                     if (part.text && event.content.role === 'model') {
@@ -80,6 +97,7 @@ app.post('/chat', async (req, res) => {
                 }
             }
         }
+        console.log(`[Chat] Completed: toolCalls=${toolCalls}, toolResults=${toolResults}, responseLength=${responseText.length}`);
 
         await hookExecutor.executePostCompletionHooks(userId, sessionId).catch(err => {
             console.error('[HookExecutor] Failed to execute hooks:', err);
@@ -127,10 +145,12 @@ async function startServer() {
                 if (!contentObj.text) return;
 
                 const messageText = contentObj.text;
+                console.log(`[Feishu WS] 📨 Received message from ${event.sender?.sender_id?.open_id}: "${messageText}"`);
                 const senderOpenId = event.sender?.sender_id?.open_id || 'unknown';
                 const userId = `feishu-${senderOpenId}`;
                 const sessionId = `session-${userId}`;
 
+                console.log(`[Feishu WS] 🤖 Starting agent processing for session ${sessionId}...`);
                 try {
                     await (runner as any).sessionService.createSession({
                         appName: 'openclaw',
@@ -146,9 +166,25 @@ async function startServer() {
                     newMessage: { role: 'user', parts: [{ text: messageText }] },
                 });
 
+                let toolCalls = 0;
+                let toolResults = 0;
                 for await (const chunk of turn) {
+                    // Debug: log all events
+                    if ((chunk as any).content?.parts) {
+                        for (const part of (chunk as any).content.parts) {
+                            if (part.functionCall) {
+                                toolCalls++;
+                                console.log(`[Feishu WS] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                            }
+                            if (part.functionResponse) {
+                                toolResults++;
+                                console.log(`[Feishu WS] Tool result: ${part.functionResponse.name} - response:`, JSON.stringify(part.functionResponse.response)?.substring(0, 500));
+                            }
+                        }
+                    }
                     if (chunk.errorMessage) {
-                        responseText += `[API Error]: ${chunk.errorMessage}\\n`;
+                        responseText += `[API Error]: ${chunk.errorMessage}\n`;
+                        console.log(`[Feishu WS] Error: ${chunk.errorMessage}`);
                     } else if (chunk.content?.parts) {
                         for (const part of chunk.content.parts) {
                             if (part.text && chunk.content.role === 'model') {
@@ -157,9 +193,16 @@ async function startServer() {
                         }
                     }
                 }
+                console.log(`[Feishu WS] Completed: toolCalls=${toolCalls}, toolResults=${toolResults}, responseText length=${responseText.length}, responseText="${responseText?.substring(0, 200)}"`);
 
                 await hookExecutor.executePostCompletionHooks(userId, sessionId).catch(console.error);
-                if (responseText) await replyFn(responseText);
+                if (responseText) {
+                    console.log(`[Feishu WS] Replying with text (length=${responseText.length})...`);
+                    await replyFn(responseText);
+                    console.log(`[Feishu WS] Reply sent successfully`);
+                } else {
+                    console.log(`[Feishu WS] ⚠️ No response text to reply with!`);
+                }
             } catch (err) {
                 console.error('[Feishu WS] Error:', err);
             }

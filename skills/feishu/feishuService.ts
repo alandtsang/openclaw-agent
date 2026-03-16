@@ -254,8 +254,12 @@ export class FeishuService {
                 const chatType = message.chat_type; // 'p2p' or 'group'
 
                 const replyFn = async (text: string) => {
-                    // For both p2p and group, we can reply directly to the chat
-                    await this.replyText(chatId, text, 'chat_id');
+                    // For p2p (private chat), use open_id to reply to the user
+                    // For group chat, use chat_id to reply to the group
+                    const receiveIdType = chatType === 'p2p' ? 'open_id' : 'chat_id';
+                    const receiveId = chatType === 'p2p' ? senderId : chatId;
+                    console.log(`[Feishu WS] Replying to ${chatType}: ${receiveIdType}=${receiveId}`);
+                    await this.replyText(receiveId, text, receiveIdType);
                 };
 
                 await onMessage(data, replyFn);
