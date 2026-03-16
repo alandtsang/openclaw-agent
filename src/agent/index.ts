@@ -6,7 +6,35 @@
  */
 
 import 'dotenv/config';
+import 'node-fetch-native/polyfill';
 import { LlmAgent } from '@google/adk';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+
+// Setup proxy if configured
+const proxy = process.env.LLM_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+if (proxy) {
+    const originalFetch = (global as any).fetch;
+    if (originalFetch) {
+        console.log(`[Proxy] Intercepting global fetch to use proxy: ${proxy}`);
+        const agent = new HttpsProxyAgent(proxy);
+        (global as any).fetch = (url: any, opts: any) => {
+            let finalUrl = url;
+            const baseUrl = process.env.LLM_BASE_URL;
+
+            // Handle Base URL replacement for Gemini
+            if (baseUrl && typeof url === 'string' && url.includes('generativelanguage.googleapis.com')) {
+                finalUrl = url.replace('https://generativelanguage.googleapis.com', baseUrl.trim().replace(/\/$/, ''));
+                console.log(`[BaseURL] Redirecting Gemini call: ${url} -> ${finalUrl}`);
+            }
+
+            console.log(`[Proxy Interceptor] Fetching: ${finalUrl} (Proxy: ${proxy})`);
+            return originalFetch(finalUrl, { ...opts, agent });
+        };
+    } else {
+        console.warn('[Proxy] global.fetch not found, proxy might not be applied correctly.');
+    }
+}
+
 import {
     AGENT_NAME,
     AGENT_DESCRIPTION,
@@ -19,7 +47,7 @@ import { fsTools, cmdTools, updateMemory, anthropicInstaller, cronTools } from '
  * Resolve the LLM model identifier.
  */
 function getModelId(): string {
-    return process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat';
+    return process.env.LLM_MODEL || 'gemini-1.5-flash';
 }
 
 /**
@@ -27,7 +55,7 @@ function getModelId(): string {
  * It dynamically discovers skills mappings and tools.
  * @param extraTools Optional list of ADK tools to inject, overriding any skill tool with the same name.
  */
-export async function initAgent(extraTools?: any[]): Promise<LlmAgent> {
+export async function initAgent(extraTools?: any[]): Promise<{ agent: LlmAgent; hooks: any[] }> {
     const skillTools = await getSkillTools();
 
     // Override any skill tools with injected ones (matched by name)
@@ -46,11 +74,19 @@ export async function initAgent(extraTools?: any[]): Promise<LlmAgent> {
 
     const skillsPrompt = await loadSkillsPrompt();
 
-    return new LlmAgent({
+    const instruction = getAgentInstruction(skillsPrompt.prompt);
+    const model = getModelId();
+
+    const agent = new LlmAgent({
         name: AGENT_NAME,
-        model: getModelId(),
+        model: model,
         description: AGENT_DESCRIPTION,
-        instruction: getAgentInstruction(skillsPrompt),
+        instruction: instruction,
         tools: dynamicTools,
     });
+    
+    return {
+        agent,
+        hooks: skillsPrompt.hooks
+    };
 }

@@ -2,32 +2,34 @@
  * HTTP Server Entry Point
  *
  * Provides an Express HTTP server for cloud deployment.
- * Endpoints:
- *   - POST /chat   — Send a message to the agent
- *   - GET  /health — Health check for load balancers
  */
 
 import 'dotenv/config';
+
+// Robust polyfills for Node.js < 18
+import * as webStreams from 'web-streams-polyfill';
+Object.assign(globalThis, webStreams);
+
+import 'node-fetch-native/polyfill';
+
 import express from 'express';
 import { InMemoryRunner } from '@google/adk';
 import type { Content } from '@google/genai';
 import { initAgent } from './agent/index.js';
+import { HookExecutor } from './agent/hookExecutor.js';
 import * as cronScheduler from './cron/index.js';
-// @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
+// @ts-ignore
 import { createFeishuService } from '../skills/feishu/feishuService.js';
-// @ts-ignore: Ignore rootDir issue since this file is conditionally loaded
+// @ts-ignore
 import { createGeneratePptxTool } from '../skills/pptx/index.js';
 
 const app = express();
 app.use(express.json());
 
-// We will instantiate this when the server starts.
 let runner: InMemoryRunner;
+let hookExecutor: HookExecutor;
 let agentName = '';
 
-/**
- * Health check endpoint
- */
 app.get('/health', (_req, res) => {
     res.json({
         status: 'ok',
@@ -36,53 +38,57 @@ app.get('/health', (_req, res) => {
     });
 });
 
-/**
- * Chat endpoint — send a message to the agent and get a response
- *
- * Request body:
- *   { "message": "string", "session_id"?: "string" }
- *
- * Response:
- *   { "response": "string", "session_id": "string" }
- */
 app.post('/chat', async (req, res) => {
     try {
         const { message, session_id } = req.body;
-
         if (!message || typeof message !== 'string') {
             res.status(400).json({ error: 'Missing or invalid "message" field' });
             return;
         }
 
-        // Use provided session_id or create a new one
         const userId = 'user-1';
         let sessionId = session_id;
 
         if (!sessionId) {
-            const session = await runner.sessionService.createSession({
+            const session = await (runner as any).sessionService.createSession({
                 appName: 'openclaw',
                 userId,
             });
             sessionId = session.id;
         }
 
-        // Build user message content
         const userContent: Content = {
             role: 'user',
             parts: [{ text: message }],
         };
 
-        // Run the agent and collect response
         let responseText = '';
+        console.log(`[Chat] Running agent with message: "${message}"`);
         const turn = runner.runAsync({
             userId,
             sessionId,
             newMessage: userContent,
         });
 
+        let toolCalls = 0;
+        let toolResults = 0;
         for await (const event of turn) {
+            // Debug: log all events
+            if ((event as any).content?.parts) {
+                for (const part of (event as any).content.parts) {
+                    if (part.functionCall) {
+                        toolCalls++;
+                        console.log(`[Chat] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                    }
+                    if (part.functionResponse) {
+                        toolResults++;
+                        console.log(`[Chat] Tool result: ${part.functionResponse.name} - response length:`, JSON.stringify(part.functionResponse.response)?.length);
+                    }
+                }
+            }
             if (event.errorMessage) {
-                responseText += `[API Error ${event.errorCode || ''}]: ${event.errorMessage}`;
+                responseText += `[API Error]: ${event.errorMessage}`;
+                console.log(`[Chat] Error: ${event.errorMessage}`);
             } else if (event.content?.parts) {
                 for (const part of event.content.parts) {
                     if (part.text && event.content.role === 'model') {
@@ -91,6 +97,11 @@ app.post('/chat', async (req, res) => {
                 }
             }
         }
+        console.log(`[Chat] Completed: toolCalls=${toolCalls}, toolResults=${toolResults}, responseLength=${responseText.length}`);
+
+        await hookExecutor.executePostCompletionHooks(userId, sessionId).catch(err => {
+            console.error('[HookExecutor] Failed to execute hooks:', err);
+        });
 
         res.json({
             response: responseText || '(No response from agent)',
@@ -98,53 +109,29 @@ app.post('/chat', async (req, res) => {
         });
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('[Server] Error processing chat:', msg);
+        console.error('[Server] Error:', msg);
         res.status(500).json({ error: `Internal server error: ${msg}` });
-    }
-});
-
-// ─── Cron REST API ─────────────────────────────────────────────────
-
-app.get('/cron/jobs', (_req, res) => {
-    const jobs = cronScheduler.listJobs();
-    res.json({ jobs });
-});
-
-app.delete('/cron/jobs/:id', (req, res) => {
-    const removed = cronScheduler.unscheduleJob(req.params.id);
-    if (removed) {
-        res.json({ status: 'ok', message: `Job ${req.params.id} removed` });
-    } else {
-        res.status(404).json({ status: 'error', message: 'Job not found' });
     }
 });
 
 async function startServer() {
     const feishuService = createFeishuService();
-
-    // Track the default chat_id for cron notifications
     let defaultChatId = process.env.FEISHU_CRON_CHAT_ID || '';
-
-    // Build Feishu-aware PPTX tool (auto-uploads to the active group chat)
     const pptxTool = createGeneratePptxTool(feishuService ?? undefined, () => defaultChatId);
 
-    const rootAgent = await initAgent([pptxTool]);
+    const { agent: rootAgent, hooks } = await initAgent([pptxTool]);
     agentName = rootAgent.name;
-    runner = new InMemoryRunner({ agent: rootAgent, appName: 'openclaw' });
+    runner = new InMemoryRunner({ agent: rootAgent as any, appName: 'openclaw' });
+    hookExecutor = new HookExecutor(runner, hooks);
 
-    // Initialize cron scheduler with Feishu SDK notification callback
     const cronNotifyFn = feishuService?.client
         ? async (jobName: string, responseText: string) => {
-            if (!defaultChatId) {
-                console.warn('[CronScheduler] No chat_id available for notification, skipping.');
-                return;
-            }
+            if (!defaultChatId) return;
             try {
-                const text = `⏰ 定时任务「${jobName}」执行结果:\n\n${responseText.slice(0, 2000)}`;
+                const text = `⏰ 定时任务「${jobName}」结果:\n\n${responseText.slice(0, 2000)}`;
                 await feishuService.replyText(defaultChatId, text, 'chat_id');
-                console.log('[CronScheduler] 📨 Feishu notification sent via SDK');
             } catch (err) {
-                console.warn('[CronScheduler] Feishu SDK notify error:', err);
+                console.warn('[CronScheduler] Notify error:', err);
             }
         }
         : undefined;
@@ -153,65 +140,51 @@ async function startServer() {
     if (feishuService) {
         feishuService.startWsServer(async (event, replyFn) => {
             try {
-                console.log('\n[Feishu WS] Received full event:', JSON.stringify(event, null, 2));
-
-                // Auto-capture chat_id for cron notifications and tool uploads
-                if (event.message?.chat_id) {
-                    if (defaultChatId !== event.message.chat_id) {
-                        console.log(`[Feishu] 📌 Switching active chat_id to: ${event.message.chat_id}`);
-                        defaultChatId = event.message.chat_id;
-                    }
-                }
-
+                if (event.message?.chat_id) defaultChatId = event.message.chat_id;
                 const contentObj = JSON.parse(event.message.content);
-                // Currently only handling text messages in WS
                 if (!contentObj.text) return;
 
                 const messageText = contentObj.text;
-                // Use open_id as user identifier
+                console.log(`[Feishu WS] 📨 Received message from ${event.sender?.sender_id?.open_id}: "${messageText}"`);
                 const senderOpenId = event.sender?.sender_id?.open_id || 'unknown';
                 const userId = `feishu-${senderOpenId}`;
                 const sessionId = `session-${userId}`;
 
-                const userContent: Content = {
-                    role: 'user',
-                    parts: [{ text: messageText }],
-                };
-
-                let responseText = '';
-
-                // Ensure session exists
+                console.log(`[Feishu WS] 🤖 Starting agent processing for session ${sessionId}...`);
                 try {
-                    const existingSession = await runner.sessionService.getSession({
-                        appName: 'openclaw',
-                        userId,
-                        sessionId
-                    });
-                    if (!existingSession) {
-                        await runner.sessionService.createSession({
-                            appName: 'openclaw',
-                            userId,
-                            sessionId,
-                        });
-                    }
-                } catch (e) {
-                    // Fallback create if getSession actually throws
-                    await runner.sessionService.createSession({
+                    await (runner as any).sessionService.createSession({
                         appName: 'openclaw',
                         userId,
                         sessionId,
                     });
-                }
+                } catch (e) {}
 
+                let responseText = '';
                 const turn = runner.runAsync({
                     userId,
                     sessionId,
-                    newMessage: userContent,
+                    newMessage: { role: 'user', parts: [{ text: messageText }] },
                 });
 
+                let toolCalls = 0;
+                let toolResults = 0;
                 for await (const chunk of turn) {
+                    // Debug: log all events
+                    if ((chunk as any).content?.parts) {
+                        for (const part of (chunk as any).content.parts) {
+                            if (part.functionCall) {
+                                toolCalls++;
+                                console.log(`[Feishu WS] Tool call: ${part.functionCall.name}`, part.functionCall.args?.substring?.(0, 200));
+                            }
+                            if (part.functionResponse) {
+                                toolResults++;
+                                console.log(`[Feishu WS] Tool result: ${part.functionResponse.name} - response:`, JSON.stringify(part.functionResponse.response)?.substring(0, 500));
+                            }
+                        }
+                    }
                     if (chunk.errorMessage) {
-                        responseText += `[API Error]: ${chunk.errorMessage}\\n`;
+                        responseText += `[API Error]: ${chunk.errorMessage}\n`;
+                        console.log(`[Feishu WS] Error: ${chunk.errorMessage}`);
                     } else if (chunk.content?.parts) {
                         for (const part of chunk.content.parts) {
                             if (part.text && chunk.content.role === 'model') {
@@ -220,37 +193,26 @@ async function startServer() {
                         }
                     }
                 }
+                console.log(`[Feishu WS] Completed: toolCalls=${toolCalls}, toolResults=${toolResults}, responseText length=${responseText.length}, responseText="${responseText?.substring(0, 200)}"`);
 
+                await hookExecutor.executePostCompletionHooks(userId, sessionId).catch(console.error);
                 if (responseText) {
+                    console.log(`[Feishu WS] Replying with text (length=${responseText.length})...`);
                     await replyFn(responseText);
+                    console.log(`[Feishu WS] Reply sent successfully`);
+                } else {
+                    console.log(`[Feishu WS] ⚠️ No response text to reply with!`);
                 }
             } catch (err) {
-                console.error('[Feishu WS] Error processing message:', err);
+                console.error('[Feishu WS] Error:', err);
             }
-        }).catch(err => console.error('[Feishu WS] Failed to start:', err));
+        }).catch(err => console.error('[Feishu WS] Failed:', err));
     }
 
     const PORT = parseInt(process.env.PORT || '3000', 10);
     app.listen(PORT, () => {
-        console.log('╔═══════════════════════════════════════════════╗');
-        console.log('║       🐾 OpenClaw Agent Server Started       ║');
-        console.log('╠═══════════════════════════════════════════════╣');
-        console.log(`║  URL:   http://localhost:${PORT}               ║`);
-        console.log(`║  Model: ${(process.env.LLM_MODEL || 'litellm/deepseek/deepseek-chat').padEnd(37)}║`);
-        console.log('║  Endpoints:                                   ║');
-        console.log('║    POST /chat    — Chat with the agent        ║');
-        console.log('║    GET  /health  — Health check               ║');
-        console.log('╚═══════════════════════════════════════════════╝');
+        console.log(`[Server] Started on port ${PORT}`);
     });
-
-    // Graceful shutdown
-    const shutdown = () => {
-        console.log('\n[Server] Shutting down...');
-        cronScheduler.stop();
-        process.exit(0);
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
 }
 
 startServer().catch(console.error);

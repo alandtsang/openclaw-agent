@@ -33,10 +33,11 @@ function parseFrontmatter(markdown: string): { data: any; content: string } {
     return { data, content };
 }
 
-export async function loadSkillsPrompt(): Promise<string> {
+export async function loadSkillsPrompt(): Promise<{ prompt: string; hooks: any[] }> {
     let promptChunk = '\n\n# 可用技能指令 (Available Skills)\n\n你可以使用以下技能来协助用户。以下是自动装载的技能列表与使用指南：\n';
+    const allHooks: any[] = [];
     try {
-        if (!fs.existsSync(skillsDir)) return '';
+        if (!fs.existsSync(skillsDir)) return { prompt: '', hooks: [] };
 
         const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
         for (const entry of entries) {
@@ -49,7 +50,15 @@ export async function loadSkillsPrompt(): Promise<string> {
                     const skillName = data.name || entry.name;
                     const skillDesc = data.description ? `> **Description**: ${data.description}\n` : '';
 
-                    promptChunk += `\n--- [Skill: ${skillName}] ---\n${skillDesc}\n${content}\n`;
+                    const truncatedContent = content.length > 300 ? content.slice(0, 300) + '\n... (内容已截断，如需了解详细指令请读取对应 SKILL.md 文件) ...' : content;
+                    promptChunk += `\n--- [Skill: ${skillName}] ---\n${skillDesc}\n${truncatedContent}\n`;
+
+                    if (data.metadata?.hooks) {
+                        allHooks.push({
+                            skill: skillName,
+                            hooks: data.metadata.hooks
+                        });
+                    }
                 }
             }
         }
@@ -57,7 +66,7 @@ export async function loadSkillsPrompt(): Promise<string> {
         console.error("[SkillsManager] Failed to load SKILL.md prompts:", e);
     }
 
-    return promptChunk;
+    return { prompt: promptChunk, hooks: allHooks };
 }
 
 export async function getSkillTools(): Promise<any[]> {

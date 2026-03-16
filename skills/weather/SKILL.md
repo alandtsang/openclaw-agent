@@ -1,8 +1,3 @@
----
-name: weather
-description: "Get real-time weather and temperature for Chinese cities via SOJSON Meteorological API. Use when the user asks about the weather, temperature, or wind speed in a specific city."
----
-
 # Weather Skill
 
 获取中国城市的实时天气情况。直接对接国内高速免密气象局接口。
@@ -20,4 +15,7 @@ description: "Get real-time weather and temperature for Chinese cities via SOJSO
 - 查询模糊的地址（没有指明具体城市，例如“这里的要求”）
 
 ## Note on Execution
-必须优先使用此 `weather_tool` 来查天气，绝不要回退到通用网络的搜索工具，因为通用网络搜索可能会在内部防火墙环境中超时。查出的数据请用带有感情的中文自然地回复给用户，并可以附带穿衣或感冒提示 (Health Advice)。
+必须优先使用此 `weather_tool` 来查天气，绝不要回退到通用网络的搜索工具，因为通用网络
+
+## Evolution
+- **成功遵循工具内部指令**: 在 `weather_tool` 返回结果中，`note` 字段提供了如何以中文并带有感情地汇报天气、气温、空气质量和健康指引的明确指导。Agent 成功地利用了这一内部指令，提供了更自然和用户友好的回复。这一模式表明，工具返回的辅助信息可以有效地提升 Agent 的响应质量。
