@@ -29,7 +29,7 @@ async function main() {
     console.log('\x1b[36m%s\x1b[0m', '╚═══════════════════════════════════════════════╝');
 
     const { agent, hooks } = await initAgent();
-    const runner = new InMemoryRunner({ agent: agent as any });
+    const runner = new InMemoryRunner({ agent: agent as any, appName: 'openclaw' });
     const hookExecutor = new HookExecutor(runner, hooks);
     const userId = 'alandtsang';
 
@@ -53,7 +53,10 @@ async function main() {
         }
 
         try {
-            const session = await (runner as any).sessionService.createSession();
+            const session = await (runner as any).sessionService.createSession({
+                appName: 'openclaw',
+                userId,
+            });
             const turn = runner.runAsync({
                 userId,
                 sessionId: session.id,

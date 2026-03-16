@@ -14,26 +14,43 @@ export const AGENT_DESCRIPTION =
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+/**
+ * Escapes curly braces in embedded file content so that ADK's
+ * `injectSessionState` does not mistake TypeScript/code snippets like
+ * `{ param }` or `{ result: 'ok' }` for session-state variable references.
+ *
+ * ADK uses the regex /\{+[^{}]*}+/g to find template variables. Any
+ * `{identifier}` that is a valid JS identifier but absent from session state
+ * will throw "Context variable not found".  We replace { → ｛ and } → ｝
+ * (Unicode fullwidth braces) so the regex never matches, while the content
+ * remains perfectly readable.
+ */
+function sanitizeForAdk(content: string): string {
+    return content
+        .replace(/\{/g, '｛')
+        .replace(/\}/g, '｝');
+}
+
 export function getAgentInstruction(dynamicSkillsPrompt: string = ''): string {
     const rootDir = process.cwd();
 
     let soulContent = '';
     try {
-        soulContent = fs.readFileSync(path.join(rootDir, 'SOUL.md'), 'utf-8');
+        soulContent = sanitizeForAdk(fs.readFileSync(path.join(rootDir, 'SOUL.md'), 'utf-8'));
     } catch (e) {
         soulContent = '(SOUL.md not found or unreadable)';
     }
 
     let memoryContent = '';
     try {
-        memoryContent = fs.readFileSync(path.join(rootDir, 'MEMORY.md'), 'utf-8');
+        memoryContent = sanitizeForAdk(fs.readFileSync(path.join(rootDir, 'MEMORY.md'), 'utf-8'));
     } catch (e) {
         memoryContent = '(MEMORY.md not found or unreadable)';
     }
 
     let claudeContent = '';
     try {
-        claudeContent = fs.readFileSync(path.join(rootDir, 'CLAUDE.md'), 'utf-8');
+        claudeContent = sanitizeForAdk(fs.readFileSync(path.join(rootDir, 'CLAUDE.md'), 'utf-8'));
     } catch (e) {
         claudeContent = '(CLAUDE.md not found or unreadable. Proceed normally.)';
     }
@@ -60,7 +77,7 @@ ${dynamicSkillsPrompt}
 - 拒绝执行可能破坏系统的危险操作。
 
 ## 自我演化 (Self-Evolution) 能力
-当用户要求你“学习新技能”或“添加一个新功能到 openclaw-agent”时，你**有能力而且被授权**通过编写代码来实现，绝对不要回答“我不能修改自己的功能”！
+当用户要求你"学习新技能"或"添加一个新功能到 openclaw-agent"时，你**有能力而且被授权**通过编写代码来实现，绝对不要回答"我不能修改自己的功能"！
 1. 你能使用 \`create_directory\` 和 \`write_file\` 工具。
 2. 你能在 \`skills/\` 目录下创建新文件夹及技能代码（如 \`skills/time-query/index.ts\`）和说明文档（\`skills/time-query/SKILL.md\`）。
 3. **对于带代码的 ADK 技能**：你的代码 **必须** 使用 Google ADK 的 FunctionTool 规范导出：
